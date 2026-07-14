@@ -40,9 +40,16 @@ export async function PUT(
     return NextResponse.json({ error: 'Title cannot be empty' }, { status: 400 });
   }
 
+  // Clear last_notification_sent when due_date or reminder_minutes changes,
+  // unless the client explicitly sets last_notification_sent in the same request
+  const shouldClearNotification =
+    (body.due_date !== undefined || body.reminder_minutes !== undefined) &&
+    body.last_notification_sent === undefined;
+
   const updated = todoDB.update(Number(id), {
     ...body,
     title: body.title !== undefined ? body.title.trim() : undefined,
+    ...(shouldClearNotification ? { last_notification_sent: null } : {}),
   });
 
   return NextResponse.json(updated);

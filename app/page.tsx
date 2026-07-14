@@ -1,7 +1,9 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import type { Todo, Priority, CreateTodoInput } from '@/lib/db';
+import type { Todo, Priority, CreateTodoInput, ReminderMinutes } from '@/lib/db';
+import { REMINDER_LABELS } from '@/lib/db';
+import { useNotifications } from '@/lib/hooks/useNotifications';
 
 const PRIORITY_ORDER: Record<Priority, number> = { high: 0, medium: 1, low: 2 };
 
@@ -59,6 +61,33 @@ function PriorityBadge({ priority }: { priority: Priority }) {
   );
 }
 
+function ReminderBadge({ minutes }: { minutes: ReminderMinutes }) {
+  return (
+    <span className="inline-flex items-center rounded-full bg-blue-100 px-2 py-0.5 text-xs font-medium text-blue-800 dark:bg-blue-900 dark:text-blue-200">
+      🔔 {REMINDER_LABELS[minutes]}
+    </span>
+  );
+}
+
+function NotificationToggle() {
+  const { permission, requestPermission } = useNotifications();
+  const enabled = permission === 'granted';
+
+  return (
+    <button
+      onClick={requestPermission}
+      disabled={enabled}
+      className={`rounded-md px-3 py-1.5 text-sm ${
+        enabled
+          ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200'
+          : 'bg-orange-500 text-white hover:bg-orange-600'
+      }`}
+    >
+      {enabled ? '🔔 Notifications On' : '🔔 Enable Notifications'}
+    </button>
+  );
+}
+
 function TodoItem({
   todo,
   onToggle,
@@ -91,6 +120,9 @@ function TodoItem({
                 {formatDueDate(todo.due_date)}
               </span>
             )}
+            {todo.reminder_minutes != null && (
+              <ReminderBadge minutes={todo.reminder_minutes as ReminderMinutes} />
+            )}
           </div>
         </div>
       </div>
@@ -118,6 +150,7 @@ function EditModal({
   const [title, setTitle] = useState(todo.title);
   const [priority, setPriority] = useState<Priority>(todo.priority);
   const [dueDate, setDueDate] = useState(todo.due_date ?? '');
+  const [reminderMinutes, setReminderMinutes] = useState<number | null>(todo.reminder_minutes ?? null);
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -126,6 +159,7 @@ function EditModal({
       title: title.trim(),
       priority,
       due_date: dueDate || null,
+      reminder_minutes: dueDate ? reminderMinutes : null,
     });
   }
 
@@ -168,9 +202,30 @@ function EditModal({
             <input
               type="datetime-local"
               value={dueDate}
-              onChange={(e) => setDueDate(e.target.value)}
+              onChange={(e) => {
+                setDueDate(e.target.value);
+                if (!e.target.value) setReminderMinutes(null);
+              }}
               className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
             />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Reminder</label>
+            <select
+              value={reminderMinutes ?? ''}
+              disabled={!dueDate}
+              onChange={(e) => setReminderMinutes(e.target.value ? (Number(e.target.value) as ReminderMinutes) : null)}
+              className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 dark:border-gray-600 dark:bg-gray-700 dark:text-white disabled:opacity-50"
+            >
+              <option value="">None</option>
+              <option value={15}>15 minutes before</option>
+              <option value={30}>30 minutes before</option>
+              <option value={60}>1 hour before</option>
+              <option value={120}>2 hours before</option>
+              <option value={1440}>1 day before</option>
+              <option value={2880}>2 days before</option>
+              <option value={10080}>1 week before</option>
+            </select>
           </div>
           <div className="flex justify-end gap-3">
             <button
@@ -199,6 +254,7 @@ export default function HomePage() {
   const [title, setTitle] = useState('');
   const [priority, setPriority] = useState<Priority>('medium');
   const [dueDate, setDueDate] = useState('');
+  const [reminderMinutes, setReminderMinutes] = useState<number | null>(null);
   const [error, setError] = useState('');
   const [editingTodo, setEditingTodo] = useState<Todo | null>(null);
   const [username, setUsername] = useState('');
@@ -250,6 +306,7 @@ export default function HomePage() {
       title: trimmedTitle,
       priority,
       due_date: dueDate || null,
+      reminder_minutes: dueDate ? reminderMinutes : null,
     };
 
     const optimisticTodo: Todo = {
@@ -272,6 +329,7 @@ export default function HomePage() {
     setTitle('');
     setPriority('medium');
     setDueDate('');
+    setReminderMinutes(null);
 
     try {
       const res = await fetch('/api/todos', {
@@ -362,6 +420,7 @@ export default function HomePage() {
         <h1 className="text-2xl font-bold text-gray-800 dark:text-white">Todo App</h1>
         <div className="flex items-center gap-4">
           <span className="text-sm text-gray-600 dark:text-gray-400">{username}</span>
+          <NotificationToggle />
           <button
             onClick={handleLogout}
             className="rounded-md bg-gray-200 px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-300 dark:bg-gray-700 dark:text-gray-300"
@@ -401,9 +460,27 @@ export default function HomePage() {
           <input
             type="datetime-local"
             value={dueDate}
-            onChange={(e) => setDueDate(e.target.value)}
+            onChange={(e) => {
+              setDueDate(e.target.value);
+              if (!e.target.value) setReminderMinutes(null);
+            }}
             className="rounded-md border border-gray-300 px-3 py-2 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
           />
+          <select
+            value={reminderMinutes ?? ''}
+            disabled={!dueDate}
+            onChange={(e) => setReminderMinutes(e.target.value ? (Number(e.target.value) as ReminderMinutes) : null)}
+            className="rounded-md border border-gray-300 px-3 py-2 dark:border-gray-600 dark:bg-gray-700 dark:text-white disabled:opacity-50"
+          >
+            <option value="">No reminder</option>
+            <option value={15}>15 min before</option>
+            <option value={30}>30 min before</option>
+            <option value={60}>1 hour before</option>
+            <option value={120}>2 hours before</option>
+            <option value={1440}>1 day before</option>
+            <option value={2880}>2 days before</option>
+            <option value={10080}>1 week before</option>
+          </select>
           <button
             type="submit"
             className="rounded-md bg-blue-600 px-4 py-2 text-white hover:bg-blue-700 disabled:opacity-50"

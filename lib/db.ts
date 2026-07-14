@@ -3,6 +3,17 @@ import path from 'path';
 
 export type Priority = 'high' | 'medium' | 'low';
 export type RecurrencePattern = 'daily' | 'weekly' | 'monthly' | 'yearly';
+export type ReminderMinutes = 15 | 30 | 60 | 120 | 1440 | 2880 | 10080;
+
+export const REMINDER_LABELS: Record<ReminderMinutes, string> = {
+  15: '15m',
+  30: '30m',
+  60: '1h',
+  120: '2h',
+  1440: '1d',
+  2880: '2d',
+  10080: '1w',
+};
 
 export interface Todo {
   id: number;
@@ -79,6 +90,7 @@ export interface CreateTodoInput {
 
 export interface UpdateTodoInput extends Partial<CreateTodoInput> {
   completed?: boolean;
+  last_notification_sent?: string | null;
 }
 
 interface TodoRow {
@@ -324,6 +336,10 @@ export const todoDB = {
     if (data.reminder_minutes !== undefined) {
       fields.push('reminder_minutes = ?');
       values.push(data.reminder_minutes);
+    }
+    if (data.last_notification_sent !== undefined) {
+      fields.push('last_notification_sent = ?');
+      values.push(data.last_notification_sent);
     }
 
     if (fields.length > 0) {
