@@ -43,11 +43,14 @@ RUN groupadd --system --gid 1001 nodejs \
 
 COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
 COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
+COPY --from=builder --chown=nextjs:nodejs /app/public ./public
 COPY --chown=nextjs:nodejs docker-entrypoint.sh ./
-RUN chmod +x docker-entrypoint.sh
+RUN sed -i 's/\r$//' docker-entrypoint.sh \
+    && chmod +x docker-entrypoint.sh
 
 EXPOSE 3000
 
 # Stays root here so the entrypoint can chown a Railway volume mount before
 # dropping to the non-root "nextjs" user to actually run the server.
 ENTRYPOINT ["./docker-entrypoint.sh"]
+CMD ["node", "server.js"]
