@@ -41,7 +41,7 @@ test.describe('Todo CRUD Operations', () => {
     const dateStr = futureDate.toISOString().slice(0, 16);
 
     await page.locator('input[placeholder="What needs to be done?"]').fill('Important task');
-    await page.locator('form select').selectOption('high');
+    await page.locator('form select').first().selectOption('high');
     await page.locator('input[type="datetime-local"]').fill(dateStr);
     const resp = page.waitForResponse((r) => r.url().includes('/api/todos') && r.request().method() === 'POST');
     await page.locator('form button[type="submit"]').click();
@@ -49,7 +49,7 @@ test.describe('Todo CRUD Operations', () => {
 
     const todoItem = page.locator('li').filter({ hasText: 'Important task' });
     await expect(todoItem).toBeVisible({ timeout: 10000 });
-    await expect(todoItem.locator('span').filter({ hasText: 'High' })).toBeVisible();
+    await expect(todoItem.locator('span').filter({ hasText: 'high' })).toBeVisible();
   });
 
   test('should not create todo with empty title', async ({ page }) => {

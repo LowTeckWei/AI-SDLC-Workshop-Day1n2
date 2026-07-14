@@ -24,6 +24,15 @@ export {
 
 import type { Priority, RecurrencePattern, Todo, Subtask, Tag, User, Authenticator, Template, CreateTodoInput, UpdateTodoInput, CreateTagInput, UpdateTagInput } from './types';
 
+export interface CreateSubtaskDto {
+  title: string;
+}
+
+export interface UpdateSubtaskDto {
+  title?: string;
+  completed?: boolean;
+}
+
 interface TodoRow {
   id: number;
   user_id: number;
@@ -37,6 +46,15 @@ interface TodoRow {
   last_notification_sent: string | null;
   created_at: string;
   updated_at: string | null;
+}
+
+interface SubtaskRow {
+  id: number;
+  todo_id: number;
+  title: string;
+  completed: number;
+  position: number;
+  created_at: string;
 }
 
 const DB_PATH = path.join(process.cwd(), 'todos.db');
@@ -150,6 +168,13 @@ function rowToTodo(row: TodoRow): Todo {
   };
 }
 
+function rowToSubtask(row: SubtaskRow): Subtask {
+  return {
+    ...row,
+    completed: row.completed === 1,
+  };
+}
+
 export const userDB = {
   findByUsername(username: string): User | undefined {
     return db.prepare('SELECT * FROM users WHERE username = ?').get(username) as User | undefined;
@@ -229,7 +254,8 @@ export const todoDB = {
     if (!row) return undefined;
 
     const todo = rowToTodo(row);
-    todo.subtasks = db.prepare('SELECT * FROM subtasks WHERE todo_id = ? ORDER BY position').all(id) as Subtask[];
+    const subtaskRows = db.prepare('SELECT * FROM subtasks WHERE todo_id = ? ORDER BY position').all(id) as SubtaskRow[];
+    todo.subtasks = subtaskRows.map(rowToSubtask);
     todo.tags = db.prepare(
       'SELECT t.* FROM tags t JOIN todo_tags tt ON t.id = tt.tag_id WHERE tt.todo_id = ?'
     ).all(id) as Tag[];
@@ -241,7 +267,8 @@ export const todoDB = {
     const rows = db.prepare('SELECT * FROM todos WHERE user_id = ?').all(userId) as TodoRow[];
     return rows.map((row) => {
       const todo = rowToTodo(row);
-      todo.subtasks = db.prepare('SELECT * FROM subtasks WHERE todo_id = ? ORDER BY position').all(row.id) as Subtask[];
+      const subtaskRows = db.prepare('SELECT * FROM subtasks WHERE todo_id = ? ORDER BY position').all(row.id) as SubtaskRow[];
+      todo.subtasks = subtaskRows.map(rowToSubtask);
       todo.tags = db.prepare(
         'SELECT t.* FROM tags t JOIN todo_tags tt ON t.id = tt.tag_id WHERE tt.todo_id = ?'
       ).all(row.id) as Tag[];
@@ -365,26 +392,69 @@ export const tagDB = {
 };
 
 export const subtaskDB = {
-  create(data: { todo_id: number; title: string; position: number }): Subtask {
+  findByTodoId(todoId: number): Subtask[] {
+    const rows = db.prepare('SELECT * FROM subtasks WHERE todo_id = ? ORDER BY position ASC').all(todoId) as SubtaskRow[];
+    return rows.map(rowToSubtask);
+  },
+
+  findById(id: number): (Subtask & { todo_id: number }) | undefined {
+    const row = db.prepare('SELECT * FROM subtasks WHERE id = ?').get(id) as SubtaskRow | undefined;
+    if (!row) return undefined;
+    return rowToSubtask(row) as Subtask & { todo_id: number };
+  },
+
+  create(todoId: number, data: CreateSubtaskDto): Subtask {
+    const maxRow = db.prepare('SELECT MAX(position) as maxPos FROM subtasks WHERE todo_id = ?').get(todoId) as { maxPos: number | null } | undefined;
+    const position = (maxRow?.maxPos ?? -1) + 1;
+
     const stmt = db.prepare('INSERT INTO subtasks (todo_id, title, position) VALUES (?, ?, ?)');
-    const result = stmt.run(data.todo_id, data.title, data.position);
+    const result = stmt.run(todoId, data.title, position);
     return {
       id: result.lastInsertRowid as number,
-      todo_id: data.todo_id,
+      todo_id: todoId,
       title: data.title,
       completed: false,
-      position: data.position,
+      position,
       created_at: new Date().toISOString(),
     };
   },
 
-  toggleComplete(id: number, completed: boolean): void {
-    db.prepare('UPDATE subtasks SET completed = ? WHERE id = ?').run(completed ? 1 : 0, id);
+  update(id: number, data: UpdateSubtaskDto): Subtask | undefined {
+    const fields: string[] = [];
+    const values: unknown[] = [];
+
+    if (data.title !== undefined) {
+      fields.push('title = ?');
+      values.push(data.title);
+    }
+    if (data.completed !== undefined) {
+      fields.push('completed = ?');
+      values.push(data.completed ? 1 : 0);
+    }
+
+    if (fields.length > 0) {
+      const sql = `UPDATE subtasks SET ${fields.join(', ')} WHERE id = ?`;
+      values.push(id);
+      db.prepare(sql).run(...values);
+    }
+
+    return this.findById(id);
   },
 
   delete(id: number): void {
     db.prepare('DELETE FROM subtasks WHERE id = ?').run(id);
   },
 };
+
+export function calculateProgress(subtasks: Subtask[]): {
+  completed: number;
+  total: number;
+  percent: number;
+} {
+  const total = subtasks.length;
+  const completed = subtasks.filter((s) => s.completed).length;
+  const percent = total === 0 ? 0 : Math.round((completed / total) * 100);
+  return { completed, total, percent };
+}
 
 export default db;

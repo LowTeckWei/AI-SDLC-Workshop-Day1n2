@@ -61,4 +61,11 @@ export class TodoHelper {
   async getTodoCount() {
     return this.page.locator('li').count();
   }
+
+  async addSubtask(todoTitle: string, subtaskTitle: string) {
+    const todoItem = this.page.locator('li', { has: this.page.locator(`text="${todoTitle}"`) }).first();
+    await todoItem.locator('button:has-text("Subtasks")').click();
+    await todoItem.locator('input[placeholder="Add subtask..."]').fill(subtaskTitle);
+    await todoItem.locator('button:has-text("Add")').last().click();
+  }
 }

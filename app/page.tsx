@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import type { Todo, Tag, Priority, CreateTodoInput, UpdateTagInput, ReminderMinutes } from '@/lib/types';
+import type { Todo, Tag, Subtask, Priority, CreateTodoInput, UpdateTagInput, ReminderMinutes } from '@/lib/types';
 import { PRIORITY_ORDER, REMINDER_LABELS } from '@/lib/types';
 import { useNotifications } from '@/lib/hooks/useNotifications';
 
@@ -74,6 +74,135 @@ function ReminderBadge({ minutes }: { minutes: ReminderMinutes }) {
   );
 }
 
+function calculateProgress(subtasks: Subtask[]): { completed: number; total: number; percent: number } {
+  const total = subtasks.length;
+  const completed = subtasks.filter((s) => s.completed).length;
+  const percent = total === 0 ? 0 : Math.round((completed / total) * 100);
+  return { completed, total, percent };
+}
+
+function ProgressBar({ completed, total, percent }: { completed: number; total: number; percent: number }) {
+  if (total === 0) return null;
+
+  const barColor = percent === 100 ? 'bg-green-500' : 'bg-blue-500';
+
+  return (
+    <div className="mt-1">
+      <div className="flex justify-between text-xs text-gray-500 dark:text-gray-400 mb-1">
+        <span>{completed}/{total} subtasks</span>
+        <span>{percent}%</span>
+      </div>
+      <div className="w-full h-2 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
+        <div
+          className={`h-full ${barColor} transition-all duration-200`}
+          style={{ width: `${percent}%` }}
+        />
+      </div>
+    </div>
+  );
+}
+
+function SubtaskList({
+  todoId,
+  subtasks: propSubtasks,
+  onChange,
+}: {
+  todoId: number;
+  subtasks: Subtask[];
+  onChange: () => void;
+}) {
+  const [expanded, setExpanded] = useState(false);
+  const [localSubtasks, setLocalSubtasks] = useState<Subtask[]>(propSubtasks);
+  const [newTitle, setNewTitle] = useState('');
+
+  useEffect(() => {
+    setLocalSubtasks(propSubtasks);
+  }, [propSubtasks]);
+
+  const { completed, total, percent } = calculateProgress(localSubtasks);
+
+  const addSubtask = async () => {
+    const title = newTitle.trim();
+    if (!title) return;
+    setNewTitle('');
+
+    const optimistic: Subtask = {
+      id: -Date.now(),
+      todo_id: todoId,
+      title,
+      completed: false,
+      position: localSubtasks.length,
+      created_at: new Date().toISOString(),
+    };
+    setLocalSubtasks((prev) => [...prev, optimistic]);
+
+    await fetch(`/api/todos/${todoId}/subtasks`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ title }),
+    });
+    onChange();
+  };
+
+  const toggleSubtask = async (subtask: Subtask) => {
+    setLocalSubtasks((prev) =>
+      prev.map((s) => (s.id === subtask.id ? { ...s, completed: !s.completed } : s))
+    );
+
+    await fetch(`/api/subtasks/${subtask.id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ completed: !subtask.completed }),
+    });
+    onChange();
+  };
+
+  const deleteSubtask = async (id: number) => {
+    setLocalSubtasks((prev) => prev.filter((s) => s.id !== id));
+
+    await fetch(`/api/subtasks/${id}`, { method: 'DELETE' });
+    onChange();
+  };
+
+  return (
+    <div>
+      <button onClick={() => setExpanded(!expanded)} className="text-sm text-gray-500 dark:text-gray-400">
+        {expanded ? '▼' : '▶'} Subtasks
+      </button>
+
+      <ProgressBar completed={completed} total={total} percent={percent} />
+
+      {expanded && (
+        <div className="mt-2 space-y-1 pl-4">
+          {localSubtasks.map((s) => (
+            <div key={s.id} className="flex items-center gap-2">
+              <input
+                type="checkbox"
+                checked={s.completed}
+                onChange={() => toggleSubtask(s)}
+                aria-label={`Toggle subtask "${s.title}"`}
+              />
+              <span className={s.completed ? 'line-through text-gray-400' : ''}>{s.title}</span>
+              <button onClick={() => deleteSubtask(s.id)} className="ml-auto text-red-500 text-sm">✕</button>
+            </div>
+          ))}
+          <div className="flex gap-2 mt-1">
+            <input
+              type="text"
+              value={newTitle}
+              onChange={(e) => setNewTitle(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && addSubtask()}
+              placeholder="Add subtask..."
+              className="flex-1 border rounded px-2 py-1 text-sm dark:bg-gray-700 dark:border-gray-600 dark:text-white"
+            />
+            <button onClick={addSubtask} className="text-sm text-blue-600 dark:text-blue-400">Add</button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function NotificationToggle() {
   const { permission, requestPermission } = useNotifications();
   const enabled = permission === 'granted';
@@ -98,34 +227,37 @@ function TodoItem({
   onToggle,
   onEdit,
   onDelete,
+  onRefresh,
 }: {
   todo: Todo;
   onToggle: (id: number, completed: boolean) => void;
   onEdit: (todo: Todo) => void;
   onDelete: (id: number) => void;
+  onRefresh: () => void;
 }) {
   return (
-    <li className="flex items-center justify-between rounded-lg bg-white p-4 shadow-sm dark:bg-gray-800">
-      <div className="flex items-start gap-3">
-        <input
-          type="checkbox"
-          checked={todo.completed}
-          onChange={(e) => onToggle(todo.id, e.target.checked)}
-          className="mt-1 h-5 w-5 rounded border-gray-300 dark:border-gray-600"
-          aria-label={`Mark "${todo.title}" as ${todo.completed ? 'incomplete' : 'complete'}`}
-        />
-        <div>
-          <p className={`font-medium ${todo.completed ? 'line-through text-gray-400' : 'text-gray-800 dark:text-white'}`}>
-            {todo.title}
-          </p>
-          <div className="mt-1 flex items-center gap-2 flex-wrap">
-            <PriorityBadge priority={todo.priority} />
-            {todo.due_date && (
-              <span className="text-sm text-gray-500 dark:text-gray-400">
-                {formatDueDate(todo.due_date)}
-              </span>
-            )}
-            {todo.reminder_minutes != null && (
+    <li className="rounded-lg bg-white p-4 shadow-sm dark:bg-gray-800">
+      <div className="flex items-center justify-between">
+        <div className="flex items-start gap-3">
+          <input
+            type="checkbox"
+            checked={todo.completed}
+            onChange={(e) => onToggle(todo.id, e.target.checked)}
+            className="mt-1 h-5 w-5 rounded border-gray-300 dark:border-gray-600"
+            aria-label={`Mark "${todo.title}" as ${todo.completed ? 'incomplete' : 'complete'}`}
+          />
+          <div>
+            <p className={`font-medium ${todo.completed ? 'line-through text-gray-400' : 'text-gray-800 dark:text-white'}`}>
+              {todo.title}
+            </p>
+            <div className="mt-1 flex items-center gap-2 flex-wrap">
+              <PriorityBadge priority={todo.priority} />
+              {todo.due_date && (
+                <span className="text-sm text-gray-500 dark:text-gray-400">
+                  {formatDueDate(todo.due_date)}
+                </span>
+              )}
+              {todo.reminder_minutes != null && (
               <ReminderBadge minutes={todo.reminder_minutes as ReminderMinutes} />
             )}
             {todo.tags && todo.tags.length > 0 && (
@@ -136,15 +268,19 @@ function TodoItem({
               </div>
             )}
           </div>
+          </div>
+        </div>
+        <div className="flex gap-3 text-sm">
+          <button onClick={() => onEdit(todo)} className="text-blue-600 hover:text-blue-800 dark:text-blue-400">
+            Edit
+          </button>
+          <button onClick={() => onDelete(todo.id)} className="text-red-600 hover:text-red-800 dark:text-red-400">
+            Delete
+          </button>
         </div>
       </div>
-      <div className="flex gap-3 text-sm">
-        <button onClick={() => onEdit(todo)} className="text-blue-600 hover:text-blue-800 dark:text-blue-400">
-          Edit
-        </button>
-        <button onClick={() => onDelete(todo.id)} className="text-red-600 hover:text-red-800 dark:text-red-400">
-          Delete
-        </button>
+      <div className="mt-2 ml-8">
+        <SubtaskList todoId={todo.id} subtasks={todo.subtasks ?? []} onChange={onRefresh} />
       </div>
     </li>
   );
@@ -507,7 +643,11 @@ export default function HomePage() {
       const res = await fetch('/api/todos');
       if (res.ok) {
         const data = await res.json();
-        setTodos(data);
+        setTodos((prev) => {
+          // Preserve optimistic entries (negative IDs) not yet resolved
+          const optimistic = prev.filter((t) => t.id < 0);
+          return [...data, ...optimistic];
+        });
       }
     } catch {
       setError('Failed to fetch todos');
@@ -862,6 +1002,7 @@ export default function HomePage() {
                 onToggle={handleToggle}
                 onEdit={setEditingTodo}
                 onDelete={handleDelete}
+                onRefresh={fetchTodos}
               />
             ))}
           </ul>
@@ -883,6 +1024,7 @@ export default function HomePage() {
                 onToggle={handleToggle}
                 onEdit={setEditingTodo}
                 onDelete={handleDelete}
+                onRefresh={fetchTodos}
               />
             ))
           )}
@@ -902,6 +1044,7 @@ export default function HomePage() {
                 onToggle={handleToggle}
                 onEdit={setEditingTodo}
                 onDelete={handleDelete}
+                onRefresh={fetchTodos}
               />
             ))}
           </ul>
