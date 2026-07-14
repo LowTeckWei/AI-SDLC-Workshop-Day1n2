@@ -16,6 +16,7 @@ import {
   type FilterPreset,
 } from '@/lib/filters';
 import { useNotifications } from '@/lib/hooks/useNotifications';
+import { calculateSubtaskProgress } from '@/lib/progress';
 
 const REMINDER_OPTIONS: { value: number; label: string }[] = [
   { value: 15, label: '15 minutes before' },
@@ -87,12 +88,11 @@ function TagBadge({ tag, onRemove }: { tag: Tag; onRemove?: () => void }) {
 
 function SubtaskProgress({ subtasks }: { subtasks: Subtask[] }) {
   if (subtasks.length === 0) return null;
-  const completedCount = subtasks.filter((s) => s.completed).length;
-  const percent = Math.round((completedCount / subtasks.length) * 100);
+  const { completedCount, total, percent } = calculateSubtaskProgress(subtasks);
   return (
     <div className="mt-2">
       <div className="mb-1 text-xs text-gray-500 dark:text-gray-400">
-        {completedCount}/{subtasks.length} subtasks
+        {completedCount}/{total} subtasks
       </div>
       <div className="h-1.5 w-full rounded-full bg-gray-200 dark:bg-gray-800">
         <div
