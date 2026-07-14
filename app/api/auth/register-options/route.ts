@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { generateRegistrationOptions } from '@simplewebauthn/server';
 import { userDB, authenticatorDB } from '@/lib/db';
 
+export const dynamic = 'force-dynamic';
+
 const RP_NAME = 'Todo App';
 const RP_ID = process.env.RP_ID || 'localhost';
 

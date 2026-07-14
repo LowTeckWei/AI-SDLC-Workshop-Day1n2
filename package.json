@@ -19,6 +19,7 @@
   },
   "devDependencies": {
     "@playwright/test": "^1.52.0",
+    "@tailwindcss/postcss": "^4.0.0",
     "@types/better-sqlite3": "^7.6.0",
     "@types/node": "^22.15.0",
     "@types/react": "^19.1.0",
@@ -27,7 +28,9 @@
     "eslint-config-next": "^15.3.3",
     "postcss": "^8.5.0",
     "tailwindcss": "^4.0.0",
-    "@tailwindcss/postcss": "^4.0.0",
-    "typescript": "^5.8.0"
+    "typescript": "^5.9.3"
+  },
+  "allowScripts": {
+    "better-sqlite3@11.10.0": true
   }
 }

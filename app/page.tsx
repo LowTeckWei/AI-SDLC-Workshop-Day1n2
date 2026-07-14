@@ -1,11 +1,9 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import type { Todo, Tag, Priority, CreateTodoInput, UpdateTagInput, ReminderMinutes } from '@/lib/db';
-import { REMINDER_LABELS } from '@/lib/db';
+import type { Todo, Tag, Priority, CreateTodoInput, UpdateTagInput, ReminderMinutes } from '@/lib/types';
+import { PRIORITY_ORDER, REMINDER_LABELS } from '@/lib/types';
 import { useNotifications } from '@/lib/hooks/useNotifications';
-
-const PRIORITY_ORDER: Record<Priority, number> = { high: 0, medium: 1, low: 2 };
 
 function sortTodos(todos: Todo[]): Todo[] {
   return [...todos].sort((a, b) => {
@@ -48,15 +46,22 @@ function formatDueDate(dateStr: string): string {
   });
 }
 
+const PRIORITY_STYLES: Record<Priority, string> = {
+  high:   'bg-red-100 text-red-800 border-red-300 dark:bg-red-900/40 dark:text-red-300 dark:border-red-700',
+  medium: 'bg-yellow-100 text-yellow-800 border-yellow-300 dark:bg-yellow-900/40 dark:text-yellow-300 dark:border-yellow-700',
+  low:    'bg-blue-100 text-blue-800 border-blue-300 dark:bg-blue-900/40 dark:text-blue-300 dark:border-blue-700',
+};
+
+const PRIORITY_LABELS: Record<Priority, string> = {
+  high: 'High',
+  medium: 'Medium',
+  low: 'Low',
+};
+
 function PriorityBadge({ priority }: { priority: Priority }) {
-  const colors: Record<Priority, string> = {
-    high: 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200',
-    medium: 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200',
-    low: 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200',
-  };
   return (
-    <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${colors[priority]}`}>
-      {priority}
+    <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium border ${PRIORITY_STYLES[priority]}`}>
+      {PRIORITY_LABELS[priority]}
     </span>
   );
 }
@@ -483,6 +488,7 @@ export default function HomePage() {
   const [selectedTagIds, setSelectedTagIds] = useState<number[]>([]);
   const [showManageTags, setShowManageTags] = useState(false);
   const [activeTagFilter, setActiveTagFilter] = useState<number | null>(null);
+  const [priorityFilter, setPriorityFilter] = useState<Priority | 'all'>('all');
 
   const fetchTags = useCallback(async () => {
     try {
@@ -698,9 +704,11 @@ export default function HomePage() {
   }
 
   const now = new Date();
-  const filteredTodos = activeTagFilter
-    ? todos.filter((t) => t.tags?.some((tag) => tag.id === activeTagFilter))
-    : todos;
+  const filteredTodos = todos.filter((t) => {
+    if (activeTagFilter && !t.tags?.some((tag) => tag.id === activeTagFilter)) return false;
+    if (priorityFilter !== 'all' && t.priority !== priorityFilter) return false;
+    return true;
+  });
   const { overdue, pending, completed } = sectionTodos(filteredTodos, now);
 
   return (
@@ -802,10 +810,24 @@ export default function HomePage() {
         </div>
       </form>
 
+      <div className="mb-6 flex items-center gap-3">
+        <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Filter:</label>
+        <select
+          value={priorityFilter}
+          onChange={(e) => setPriorityFilter(e.target.value as Priority | 'all')}
+          className="rounded-md border border-gray-300 bg-white px-3 py-2 text-sm dark:border-gray-600 dark:bg-gray-700 dark:text-white"
+        >
+          <option value="all">All Priorities</option>
+          <option value="high">High Priority</option>
+          <option value="medium">Medium Priority</option>
+          <option value="low">Low Priority</option>
+        </select>
+      </div>
+
       {/* Tag filter bar */}
       {tags.length > 0 && (
         <div className="mb-4 flex flex-wrap items-center gap-2">
-          <span className="text-sm font-medium text-gray-600 dark:text-gray-400">Filter:</span>
+          <span className="text-sm font-medium text-gray-600 dark:text-gray-400">Tags:</span>
           <button
             onClick={() => setActiveTagFilter(null)}
             className={`rounded-full px-3 py-1 text-xs font-medium border transition-colors ${

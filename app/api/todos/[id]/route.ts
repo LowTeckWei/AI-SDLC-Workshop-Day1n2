@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSession } from '@/lib/auth';
-import { todoDB } from '@/lib/db';
+import { todoDB, validatePriority } from '@/lib/db';
+import type { Priority } from '@/lib/db';
+
+export const dynamic = 'force-dynamic';
 
 export async function GET(
   request: NextRequest,
@@ -40,6 +43,15 @@ export async function PUT(
     return NextResponse.json({ error: 'Title cannot be empty' }, { status: 400 });
   }
 
+  let priority: Priority | undefined;
+  if (body.priority !== undefined) {
+    try {
+      priority = validatePriority(body.priority);
+    } catch (err) {
+      return NextResponse.json({ error: (err as Error).message }, { status: 400 });
+    }
+  }
+
   // Clear last_notification_sent when due_date or reminder_minutes changes,
   // unless the client explicitly sets last_notification_sent in the same request
   const shouldClearNotification =
@@ -49,6 +61,7 @@ export async function PUT(
   const updated = todoDB.update(Number(id), {
     ...body,
     title: body.title !== undefined ? body.title.trim() : undefined,
+    priority,
     ...(shouldClearNotification ? { last_notification_sent: null } : {}),
   });
 

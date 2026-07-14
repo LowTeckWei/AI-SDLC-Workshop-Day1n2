@@ -1,108 +1,28 @@
 import Database from 'better-sqlite3';
 import path from 'path';
 
-export type Priority = 'high' | 'medium' | 'low';
-export type RecurrencePattern = 'daily' | 'weekly' | 'monthly' | 'yearly';
-export type ReminderMinutes = 15 | 30 | 60 | 120 | 1440 | 2880 | 10080;
+// Re-export all types and constants from the client-safe types module
+export {
+  type Priority,
+  type RecurrencePattern,
+  type ReminderMinutes,
+  type Todo,
+  type Subtask,
+  type Tag,
+  type CreateTagInput,
+  type UpdateTagInput,
+  type User,
+  type Authenticator,
+  type Template,
+  type CreateTodoInput,
+  type UpdateTodoInput,
+  PRIORITY_VALUES,
+  PRIORITY_ORDER,
+  REMINDER_LABELS,
+  validatePriority,
+} from './types';
 
-export const REMINDER_LABELS: Record<ReminderMinutes, string> = {
-  15: '15m',
-  30: '30m',
-  60: '1h',
-  120: '2h',
-  1440: '1d',
-  2880: '2d',
-  10080: '1w',
-};
-
-export interface Todo {
-  id: number;
-  user_id: number;
-  title: string;
-  completed: boolean;
-  due_date: string | null;
-  priority: Priority;
-  is_recurring: boolean;
-  recurrence_pattern: RecurrencePattern | null;
-  reminder_minutes: number | null;
-  last_notification_sent: string | null;
-  created_at: string;
-  updated_at: string | null;
-  subtasks?: Subtask[];
-  tags?: Tag[];
-}
-
-export interface Subtask {
-  id: number;
-  todo_id: number;
-  title: string;
-  completed: boolean;
-  position: number;
-  created_at: string;
-}
-
-export interface Tag {
-  id: number;
-  user_id: number;
-  name: string;
-  color: string;
-  created_at: string;
-}
-
-export interface CreateTagInput {
-  name: string;
-  color?: string;
-}
-
-export interface UpdateTagInput {
-  name?: string;
-  color?: string;
-}
-
-export interface User {
-  id: number;
-  username: string;
-  created_at: string;
-}
-
-export interface Authenticator {
-  id: number;
-  user_id: number;
-  credential_id: string;
-  credential_public_key: string;
-  counter: number;
-  transports: string | null;
-  created_at: string;
-}
-
-export interface Template {
-  id: number;
-  user_id: number;
-  name: string;
-  title: string;
-  priority: Priority;
-  due_date_offset_days: number | null;
-  reminder_minutes: number | null;
-  is_recurring: boolean;
-  recurrence_pattern: RecurrencePattern | null;
-  subtasks_json: string | null;
-  created_at: string;
-}
-
-export interface CreateTodoInput {
-  title: string;
-  due_date?: string | null;
-  priority?: Priority;
-  is_recurring?: boolean;
-  recurrence_pattern?: RecurrencePattern | null;
-  reminder_minutes?: number | null;
-  tag_ids?: number[];
-}
-
-export interface UpdateTodoInput extends Partial<CreateTodoInput> {
-  completed?: boolean;
-  last_notification_sent?: string | null;
-}
+import type { Priority, RecurrencePattern, Todo, Subtask, Tag, User, Authenticator, Template, CreateTodoInput, UpdateTodoInput, CreateTagInput, UpdateTagInput } from './types';
 
 interface TodoRow {
   id: number;

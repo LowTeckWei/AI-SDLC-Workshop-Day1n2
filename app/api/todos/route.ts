@@ -1,7 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSession } from '@/lib/auth';
-import { todoDB } from '@/lib/db';
+import { todoDB, validatePriority } from '@/lib/db';
+import type { Priority } from '@/lib/db';
 import { getSingaporeNow } from '@/lib/timezone';
+
+export const dynamic = 'force-dynamic';
 
 export async function POST(request: NextRequest) {
   const session = await getSession();
@@ -29,11 +32,18 @@ export async function POST(request: NextRequest) {
     }
   }
 
+  let priority: Priority;
+  try {
+    priority = validatePriority(body.priority);
+  } catch (err) {
+    return NextResponse.json({ error: (err as Error).message }, { status: 400 });
+  }
+
   const todo = todoDB.create({
     user_id: session.userId,
     title,
     due_date: body.due_date ?? null,
-    priority: body.priority ?? 'medium',
+    priority,
     is_recurring: body.is_recurring ?? false,
     recurrence_pattern: body.recurrence_pattern ?? null,
     reminder_minutes: body.reminder_minutes ?? null,
