@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { generateAuthenticationOptions } from '@simplewebauthn/server';
 import { userDB, authenticatorDB } from '@/lib/db';
 
+export const dynamic = 'force-dynamic';
+
 const RP_ID = process.env.RP_ID || 'localhost';
 
 export async function POST(request: NextRequest) {

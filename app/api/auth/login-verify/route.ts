@@ -3,6 +3,8 @@ import { verifyAuthenticationResponse } from '@simplewebauthn/server';
 import { authenticatorDB, userDB } from '@/lib/db';
 import { createSession } from '@/lib/auth';
 
+export const dynamic = 'force-dynamic';
+
 const RP_ID = process.env.RP_ID || 'localhost';
 const ORIGIN = process.env.ORIGIN || 'http://localhost:3000';
 
