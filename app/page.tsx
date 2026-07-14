@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import type { Todo, Priority, CreateTodoInput, ReminderMinutes } from '@/lib/db';
+import type { Todo, Tag, Priority, CreateTodoInput, UpdateTagInput, ReminderMinutes } from '@/lib/db';
 import { REMINDER_LABELS } from '@/lib/db';
 import { useNotifications } from '@/lib/hooks/useNotifications';
 
@@ -113,7 +113,7 @@ function TodoItem({
           <p className={`font-medium ${todo.completed ? 'line-through text-gray-400' : 'text-gray-800 dark:text-white'}`}>
             {todo.title}
           </p>
-          <div className="mt-1 flex items-center gap-2">
+          <div className="mt-1 flex items-center gap-2 flex-wrap">
             <PriorityBadge priority={todo.priority} />
             {todo.due_date && (
               <span className="text-sm text-gray-500 dark:text-gray-400">
@@ -122,6 +122,13 @@ function TodoItem({
             )}
             {todo.reminder_minutes != null && (
               <ReminderBadge minutes={todo.reminder_minutes as ReminderMinutes} />
+            )}
+            {todo.tags && todo.tags.length > 0 && (
+              <div className="flex flex-wrap gap-1">
+                {todo.tags.map((tag) => (
+                  <TagPill key={tag.id} tag={tag} selected />
+                ))}
+              </div>
             )}
           </div>
         </div>
@@ -140,10 +147,12 @@ function TodoItem({
 
 function EditModal({
   todo,
+  tags,
   onSave,
   onCancel,
 }: {
   todo: Todo;
+  tags: Tag[];
   onSave: (id: number, data: Partial<CreateTodoInput>) => void;
   onCancel: () => void;
 }) {
@@ -151,6 +160,13 @@ function EditModal({
   const [priority, setPriority] = useState<Priority>(todo.priority);
   const [dueDate, setDueDate] = useState(todo.due_date ?? '');
   const [reminderMinutes, setReminderMinutes] = useState<number | null>(todo.reminder_minutes ?? null);
+  const [editTagIds, setEditTagIds] = useState<number[]>(todo.tags?.map((t) => t.id) ?? []);
+
+  function toggleTag(tag: Tag) {
+    setEditTagIds((prev) =>
+      prev.includes(tag.id) ? prev.filter((id) => id !== tag.id) : [...prev, tag.id]
+    );
+  }
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -160,6 +176,7 @@ function EditModal({
       priority,
       due_date: dueDate || null,
       reminder_minutes: dueDate ? reminderMinutes : null,
+      tag_ids: editTagIds,
     });
   }
 
@@ -227,6 +244,21 @@ function EditModal({
               <option value={10080}>1 week before</option>
             </select>
           </div>
+          {tags.length > 0 && (
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Tags</label>
+              <div className="flex flex-wrap gap-2">
+                {tags.map((tag) => (
+                  <TagPill
+                    key={tag.id}
+                    tag={tag}
+                    selected={editTagIds.includes(tag.id)}
+                    onClick={toggleTag}
+                  />
+                ))}
+              </div>
+            </div>
+          )}
           <div className="flex justify-end gap-3">
             <button
               type="button"
@@ -249,6 +281,195 @@ function EditModal({
   );
 }
 
+function TagPill({
+  tag,
+  selected = false,
+  onClick,
+}: {
+  tag: Tag;
+  selected?: boolean;
+  onClick?: (tag: Tag) => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={() => onClick?.(tag)}
+      style={selected ? { backgroundColor: tag.color, borderColor: tag.color } : { borderColor: tag.color }}
+      className={`inline-flex items-center gap-1 rounded-full px-3 py-1 text-xs font-medium border transition-colors ${
+        selected
+          ? 'text-white'
+          : 'bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-200'
+      }`}
+    >
+      {selected && <span aria-hidden>✓</span>}
+      <span className="truncate max-w-[10rem]">{tag.name}</span>
+    </button>
+  );
+}
+
+function ManageTagsModal({
+  tags,
+  onClose,
+  onCreate,
+  onUpdate,
+  onDelete,
+}: {
+  tags: Tag[];
+  onClose: () => void;
+  onCreate: (name: string, color: string) => Promise<void>;
+  onUpdate: (id: number, input: UpdateTagInput) => Promise<void>;
+  onDelete: (id: number) => Promise<void>;
+}) {
+  const [name, setName] = useState('');
+  const [color, setColor] = useState('#3B82F6');
+  const [editingId, setEditingId] = useState<number | null>(null);
+  const [editName, setEditName] = useState('');
+  const [editColor, setEditColor] = useState('');
+  const [tagError, setTagError] = useState('');
+
+  function startEdit(tag: Tag) {
+    setEditingId(tag.id);
+    setEditName(tag.name);
+    setEditColor(tag.color);
+    setTagError('');
+  }
+
+  async function handleCreate() {
+    const trimmed = name.trim();
+    if (!trimmed) return;
+    setTagError('');
+    try {
+      await onCreate(trimmed, color);
+      setName('');
+      setColor('#3B82F6');
+    } catch (err) {
+      setTagError(err instanceof Error ? err.message : 'Failed to create tag');
+    }
+  }
+
+  async function handleUpdate(id: number) {
+    setTagError('');
+    try {
+      await onUpdate(id, { name: editName.trim(), color: editColor });
+      setEditingId(null);
+    } catch (err) {
+      setTagError(err instanceof Error ? err.message : 'Failed to update tag');
+    }
+  }
+
+  async function handleDelete(id: number) {
+    if (!confirm('Delete this tag? It will be removed from all todos.')) return;
+    setTagError('');
+    try {
+      await onDelete(id);
+    } catch (err) {
+      setTagError(err instanceof Error ? err.message : 'Failed to delete tag');
+    }
+  }
+
+  return (
+    <div
+      className="fixed inset-0 bg-black/40 flex items-center justify-center z-50"
+      onClick={onClose}
+      onKeyDown={(e) => e.key === 'Escape' && onClose()}
+    >
+      <div
+        className="bg-white dark:bg-gray-800 rounded-lg p-6 w-full max-w-md shadow-xl"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <h2 className="text-lg font-semibold text-gray-800 dark:text-white mb-4">Manage Tags</h2>
+
+        {tagError && (
+          <p className="mb-3 text-sm text-red-600 dark:text-red-400">{tagError}</p>
+        )}
+
+        <ul className="space-y-2 mb-4 max-h-64 overflow-y-auto">
+          {tags.length === 0 && (
+            <li className="text-sm text-gray-400 dark:text-gray-500">No tags yet.</li>
+          )}
+          {tags.map((tag) =>
+            editingId === tag.id ? (
+              <li key={tag.id} className="flex items-center gap-2">
+                <input
+                  value={editName}
+                  onChange={(e) => setEditName(e.target.value)}
+                  className="flex-1 border rounded px-2 py-1 text-sm dark:bg-gray-700 dark:border-gray-600 dark:text-white"
+                />
+                <input
+                  type="color"
+                  value={editColor}
+                  onChange={(e) => setEditColor(e.target.value)}
+                  className="h-8 w-8 rounded cursor-pointer"
+                />
+                <button
+                  onClick={() => handleUpdate(tag.id)}
+                  className="text-sm text-blue-600 dark:text-blue-400 font-medium"
+                >
+                  Save
+                </button>
+                <button
+                  onClick={() => setEditingId(null)}
+                  className="text-sm text-gray-500 dark:text-gray-400"
+                >
+                  Cancel
+                </button>
+              </li>
+            ) : (
+              <li key={tag.id} className="flex items-center justify-between gap-2">
+                <TagPill tag={tag} selected />
+                <div className="flex gap-3 text-sm">
+                  <button
+                    onClick={() => startEdit(tag)}
+                    className="text-blue-600 dark:text-blue-400"
+                  >
+                    Edit
+                  </button>
+                  <button
+                    onClick={() => handleDelete(tag.id)}
+                    className="text-red-600 dark:text-red-400"
+                  >
+                    Delete
+                  </button>
+                </div>
+              </li>
+            )
+          )}
+        </ul>
+
+        <div className="flex gap-2">
+          <input
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            onKeyDown={(e) => e.key === 'Enter' && handleCreate()}
+            placeholder="Tag name"
+            className="flex-1 border rounded px-2 py-1 text-sm dark:bg-gray-700 dark:border-gray-600 dark:text-white"
+          />
+          <input
+            type="color"
+            value={color}
+            onChange={(e) => setColor(e.target.value)}
+            className="h-8 w-8 rounded cursor-pointer"
+          />
+          <button
+            onClick={handleCreate}
+            disabled={!name.trim()}
+            className="bg-blue-600 text-white rounded px-3 py-1 text-sm disabled:opacity-50"
+          >
+            Create Tag
+          </button>
+        </div>
+
+        <button
+          onClick={onClose}
+          className="mt-4 text-sm text-gray-500 dark:text-gray-400 hover:underline"
+        >
+          Close
+        </button>
+      </div>
+    </div>
+  );
+}
+
 export default function HomePage() {
   const [todos, setTodos] = useState<Todo[]>([]);
   const [title, setTitle] = useState('');
@@ -258,6 +479,22 @@ export default function HomePage() {
   const [error, setError] = useState('');
   const [editingTodo, setEditingTodo] = useState<Todo | null>(null);
   const [username, setUsername] = useState('');
+  const [tags, setTags] = useState<Tag[]>([]);
+  const [selectedTagIds, setSelectedTagIds] = useState<number[]>([]);
+  const [showManageTags, setShowManageTags] = useState(false);
+  const [activeTagFilter, setActiveTagFilter] = useState<number | null>(null);
+
+  const fetchTags = useCallback(async () => {
+    try {
+      const res = await fetch('/api/tags');
+      if (res.ok) {
+        const data = await res.json();
+        setTags(data);
+      }
+    } catch {
+      // non-fatal
+    }
+  }, []);
 
   const fetchTodos = useCallback(async () => {
     try {
@@ -278,10 +515,56 @@ export default function HomePage() {
         const data = await res.json();
         setUsername(data.username);
         fetchTodos();
+        fetchTags();
       }
     }
     checkSession();
-  }, [fetchTodos]);
+  }, [fetchTodos, fetchTags]);
+
+  async function handleCreateTag(name: string, color: string) {
+    const res = await fetch('/api/tags', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name, color }),
+    });
+    if (!res.ok) {
+      const data = await res.json();
+      throw new Error(data.error || 'Failed to create tag');
+    }
+    await fetchTags();
+  }
+
+  async function handleUpdateTag(id: number, input: UpdateTagInput) {
+    const res = await fetch(`/api/tags/${id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(input),
+    });
+    if (!res.ok) {
+      const data = await res.json();
+      throw new Error(data.error || 'Failed to update tag');
+    }
+    await fetchTags();
+    await fetchTodos();
+  }
+
+  async function handleDeleteTag(id: number) {
+    const res = await fetch(`/api/tags/${id}`, { method: 'DELETE' });
+    if (!res.ok) {
+      const data = await res.json();
+      throw new Error(data.error || 'Failed to delete tag');
+    }
+    // Reset active filter if the deleted tag was the current filter
+    if (activeTagFilter === id) setActiveTagFilter(null);
+    await fetchTags();
+    await fetchTodos();
+  }
+
+  function toggleTagSelection(tag: Tag) {
+    setSelectedTagIds((prev) =>
+      prev.includes(tag.id) ? prev.filter((id) => id !== tag.id) : [...prev, tag.id]
+    );
+  }
 
   async function handleAddTodo(e: React.FormEvent) {
     e.preventDefault();
@@ -307,6 +590,7 @@ export default function HomePage() {
       priority,
       due_date: dueDate || null,
       reminder_minutes: dueDate ? reminderMinutes : null,
+      tag_ids: selectedTagIds,
     };
 
     const optimisticTodo: Todo = {
@@ -323,6 +607,7 @@ export default function HomePage() {
       due_date: input.due_date ?? null,
       priority: input.priority ?? 'medium',
       title: trimmedTitle,
+      tags: tags.filter((t) => selectedTagIds.includes(t.id)),
     };
 
     setTodos((prev) => [...prev, optimisticTodo]);
@@ -330,6 +615,7 @@ export default function HomePage() {
     setPriority('medium');
     setDueDate('');
     setReminderMinutes(null);
+    setSelectedTagIds([]);
 
     try {
       const res = await fetch('/api/todos', {
@@ -412,7 +698,10 @@ export default function HomePage() {
   }
 
   const now = new Date();
-  const { overdue, pending, completed } = sectionTodos(todos, now);
+  const filteredTodos = activeTagFilter
+    ? todos.filter((t) => t.tags?.some((tag) => tag.id === activeTagFilter))
+    : todos;
+  const { overdue, pending, completed } = sectionTodos(filteredTodos, now);
 
   return (
     <div className="mx-auto max-w-3xl px-4 py-8">
@@ -489,7 +778,54 @@ export default function HomePage() {
             Add
           </button>
         </div>
+        {tags.length > 0 && (
+          <div className="mt-3 flex flex-wrap items-center gap-2">
+            <span className="text-sm text-gray-500 dark:text-gray-400">Tags:</span>
+            {tags.map((tag) => (
+              <TagPill
+                key={tag.id}
+                tag={tag}
+                selected={selectedTagIds.includes(tag.id)}
+                onClick={toggleTagSelection}
+              />
+            ))}
+          </div>
+        )}
+        <div className="mt-3">
+          <button
+            type="button"
+            onClick={() => setShowManageTags(true)}
+            className="text-sm text-blue-600 dark:text-blue-400 hover:underline"
+          >
+            + Manage Tags
+          </button>
+        </div>
       </form>
+
+      {/* Tag filter bar */}
+      {tags.length > 0 && (
+        <div className="mb-4 flex flex-wrap items-center gap-2">
+          <span className="text-sm font-medium text-gray-600 dark:text-gray-400">Filter:</span>
+          <button
+            onClick={() => setActiveTagFilter(null)}
+            className={`rounded-full px-3 py-1 text-xs font-medium border transition-colors ${
+              activeTagFilter === null
+                ? 'bg-gray-700 text-white border-gray-700 dark:bg-gray-200 dark:text-gray-800'
+                : 'bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-200 border-gray-300 dark:border-gray-600'
+            }`}
+          >
+            All Tags
+          </button>
+          {tags.map((tag) => (
+            <TagPill
+              key={tag.id}
+              tag={tag}
+              selected={activeTagFilter === tag.id}
+              onClick={(t) => setActiveTagFilter(activeTagFilter === t.id ? null : t.id)}
+            />
+          ))}
+        </div>
+      )}
 
       {overdue.length > 0 && (
         <section className="mb-6">
@@ -553,8 +889,19 @@ export default function HomePage() {
       {editingTodo && (
         <EditModal
           todo={editingTodo}
+          tags={tags}
           onSave={handleEdit}
           onCancel={() => setEditingTodo(null)}
+        />
+      )}
+
+      {showManageTags && (
+        <ManageTagsModal
+          tags={tags}
+          onClose={() => setShowManageTags(false)}
+          onCreate={handleCreateTag}
+          onUpdate={handleUpdateTag}
+          onDelete={handleDeleteTag}
         />
       )}
     </div>

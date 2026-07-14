@@ -46,6 +46,17 @@ export interface Tag {
   user_id: number;
   name: string;
   color: string;
+  created_at: string;
+}
+
+export interface CreateTagInput {
+  name: string;
+  color?: string;
+}
+
+export interface UpdateTagInput {
+  name?: string;
+  color?: string;
 }
 
 export interface User {
@@ -165,14 +176,20 @@ db.exec(`
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     name TEXT NOT NULL,
-    color TEXT NOT NULL DEFAULT '#6b7280'
+    color TEXT NOT NULL DEFAULT '#3B82F6',
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
   );
+
+  CREATE UNIQUE INDEX IF NOT EXISTS unique_user_tag_name ON tags(user_id, name);
+  CREATE INDEX IF NOT EXISTS idx_tags_user_id ON tags(user_id);
 
   CREATE TABLE IF NOT EXISTS todo_tags (
     todo_id INTEGER NOT NULL REFERENCES todos(id) ON DELETE CASCADE,
     tag_id INTEGER NOT NULL REFERENCES tags(id) ON DELETE CASCADE,
     PRIMARY KEY (todo_id, tag_id)
   );
+
+  CREATE INDEX IF NOT EXISTS idx_todo_tags_tag_id ON todo_tags(tag_id);
 
   CREATE TABLE IF NOT EXISTS templates (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -195,6 +212,13 @@ db.exec(`
     year INTEGER NOT NULL
   );
 `);
+
+// Migrations for existing databases
+try {
+  db.exec(`ALTER TABLE tags ADD COLUMN created_at TEXT NOT NULL DEFAULT (datetime('now'))`);
+} catch {
+  // Column already exists
+}
 
 function rowToTodo(row: TodoRow): Todo {
   return {
@@ -366,18 +390,57 @@ export const todoDB = {
 };
 
 export const tagDB = {
-  create(data: { user_id: number; name: string; color?: string }): Tag {
+  findAllByUser(userId: number): Tag[] {
+    return db.prepare('SELECT * FROM tags WHERE user_id = ? ORDER BY created_at').all(userId) as Tag[];
+  },
+
+  findById(id: number, userId: number): Tag | undefined {
+    return db.prepare('SELECT * FROM tags WHERE id = ? AND user_id = ?').get(id, userId) as Tag | undefined;
+  },
+
+  create(userId: number, input: CreateTagInput): Tag {
     const stmt = db.prepare('INSERT INTO tags (user_id, name, color) VALUES (?, ?, ?)');
-    const result = stmt.run(data.user_id, data.name, data.color ?? '#6b7280');
-    return { id: result.lastInsertRowid as number, user_id: data.user_id, name: data.name, color: data.color ?? '#6b7280' };
+    const color = input.color ?? '#3B82F6';
+    const result = stmt.run(userId, input.name, color);
+    return this.findById(result.lastInsertRowid as number, userId)!;
   },
 
-  findByUser(userId: number): Tag[] {
-    return db.prepare('SELECT * FROM tags WHERE user_id = ?').all(userId) as Tag[];
+  update(id: number, userId: number, input: UpdateTagInput): Tag | undefined {
+    const fields: string[] = [];
+    const values: unknown[] = [];
+
+    if (input.name !== undefined) {
+      fields.push('name = ?');
+      values.push(input.name);
+    }
+    if (input.color !== undefined) {
+      fields.push('color = ?');
+      values.push(input.color);
+    }
+
+    if (fields.length === 0) return this.findById(id, userId);
+
+    values.push(id, userId);
+    db.prepare(`UPDATE tags SET ${fields.join(', ')} WHERE id = ? AND user_id = ?`).run(...values);
+    return this.findById(id, userId);
   },
 
-  delete(id: number): void {
-    db.prepare('DELETE FROM tags WHERE id = ?').run(id);
+  delete(id: number, userId: number): void {
+    db.prepare('DELETE FROM tags WHERE id = ? AND user_id = ?').run(id, userId);
+  },
+
+  attachToTodo(todoId: number, tagId: number): void {
+    db.prepare('INSERT OR IGNORE INTO todo_tags (todo_id, tag_id) VALUES (?, ?)').run(todoId, tagId);
+  },
+
+  detachFromTodo(todoId: number, tagId: number): void {
+    db.prepare('DELETE FROM todo_tags WHERE todo_id = ? AND tag_id = ?').run(todoId, tagId);
+  },
+
+  findByTodoId(todoId: number): Tag[] {
+    return db.prepare(
+      'SELECT t.* FROM tags t JOIN todo_tags tt ON t.id = tt.tag_id WHERE tt.todo_id = ?'
+    ).all(todoId) as Tag[];
   },
 };
 
