@@ -99,7 +99,7 @@ declare global {
 }
 
 function createConnection(): Database.Database {
-  const dbPath = path.join(process.cwd(), 'todos.db');
+  const dbPath = path.join(process.env.RAILWAY_VOLUME_MOUNT_PATH ?? process.cwd(), 'todos.db');
   const database = new Database(dbPath);
   database.pragma('journal_mode = WAL');
   database.pragma('foreign_keys = ON');
