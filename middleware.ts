@@ -5,7 +5,7 @@ export const config = {
   matcher: ['/', '/calendar', '/login'],
 };
 
-export function proxy(request: NextRequest) {
+export function middleware(request: NextRequest) {
   const token = request.cookies.get(SESSION_COOKIE_NAME)?.value;
   const session = verifySessionToken(token);
   const { pathname } = request.nextUrl;
