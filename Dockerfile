@@ -38,12 +38,16 @@ ENV PORT=3000
 ENV HOSTNAME=0.0.0.0
 
 RUN groupadd --system --gid 1001 nodejs \
-    && useradd --system --uid 1001 --gid nodejs nextjs
+    && useradd --system --uid 1001 --gid nodejs nextjs \
+    && chown nextjs:nodejs /app
 
-COPY --from=builder /app/.next/standalone ./
-COPY --from=builder /app/.next/static ./.next/static
+COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
+COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
+COPY --chown=nextjs:nodejs docker-entrypoint.sh ./
+RUN chmod +x docker-entrypoint.sh
 
-USER nextjs
 EXPOSE 3000
 
-CMD ["node", "server.js"]
+# Stays root here so the entrypoint can chown a Railway volume mount before
+# dropping to the non-root "nextjs" user to actually run the server.
+ENTRYPOINT ["./docker-entrypoint.sh"]

@@ -26,43 +26,55 @@ The Railway CLI has limitations that make GitHub Actions deployment difficult:
    - Grant access to your repositories
 
 4. **Choose your repository:**
-   - Select: `kenken64/AI-SDLC-Workshop-Day1`
-   - Choose branch: `solution` or `main`
-   - Railway will auto-detect it's a Next.js app
+   - Select your fork/copy of this repo (e.g. `<your-github-username>/AI-SDLC-Workshop-Day1n2`)
+   - Choose branch: `main` (or whichever branch you deploy from)
+   - This repo ships a `railway.json` that pins the builder to `DOCKERFILE`, so Railway will build the multi-stage `Dockerfile` at the repo root instead of auto-detecting Nixpacks — no build/start command configuration needed.
 
-5. **Railway automatically configures everything:**
-   - ✅ Detects Next.js
-   - ✅ Sets build command: `npm run build`
-   - ✅ Sets start command: `npm start`
-   - ✅ Creates deployment environment
+5. **Railway automatically configures everything from `railway.json` + `Dockerfile`:**
+   - ✅ Builds via Docker (`node:20-bookworm-slim`, matches `better-sqlite3`'s native binary ABI)
+   - ✅ Runs the Next.js standalone server (`node server.js`)
+   - ✅ Restarts on failure (up to 10 retries)
    - ✅ Generates public URL
 
-### Step 2: Configure Settings (Optional)
+### Step 2: Configure Settings (Required)
 
 1. **In Railway project, click on your service**
 
 2. **Go to "Settings" tab**
 
-3. **Set Root Directory (if needed):**
+3. **Set Root Directory (only if needed):**
    ```
    Root Directory: /todo-app
    ```
-   (Only if your Next.js app is in a subdirectory)
+   (Only if your Next.js app is in a subdirectory — this repo's app is at the root, so leave it blank)
 
-4. **Environment Variables (if needed):**
-   - Go to "Variables" tab
-   - Add any required environment variables
-   - Example: `NODE_ENV=production`
+4. **Environment Variables (required) — go to the "Variables" tab and add:**
 
-5. **Custom Domain (Optional):**
+   | Variable | Required? | Value |
+   |---|---|---|
+   | `JWT_SECRET` | **Yes** | A long random string, e.g. generate with `openssl rand -base64 32`. Session signing breaks without this. |
+   | `RP_ID` | Recommended for prod | Your Railway domain without protocol, e.g. `your-app.up.railway.app`. Falls back to the request hostname if unset, but set it explicitly once you have a stable domain. |
+   | `ORIGIN` | Recommended for prod | Full origin URL, e.g. `https://your-app.up.railway.app`. Falls back to the request's origin header if unset. |
+   | `RAILWAY_VOLUME_MOUNT_PATH` | **Yes, if you attach a volume** | Set automatically by Railway once a volume is mounted (see step 5 below) — don't set it by hand. |
+
+   These are the same variables documented in `.env.example`; see `lib/webauthn.ts` (`RP_ID`/`ORIGIN`) and `lib/db.ts` (`RAILWAY_VOLUME_MOUNT_PATH`) for exactly how each is consumed.
+
+5. **Attach a persistent Volume (required for SQLite to survive redeploys):**
+   - Go to your service → **"Volumes"** tab → **"New Volume"**
+   - Set **Mount Path** to `/app/data`
+   - Railway injects `RAILWAY_VOLUME_MOUNT_PATH=/app/data` automatically; `lib/db.ts` reads it and stores `todos.db` there instead of the ephemeral container filesystem
+   - Without this step, every redeploy wipes the database
+
+6. **Custom Domain (Optional):**
    - Go to "Settings" → "Networking"
    - Click "Generate Domain" for a Railway subdomain
    - Or add your own custom domain
+   - If you change domains later, update `RP_ID`/`ORIGIN` to match — WebAuthn ties credentials to the origin they were registered on
 
 ### Step 3: Deploy!
 
 **That's it!** Railway will now automatically:
-- ✅ Deploy on every push to `solution`/`main` branch
+- ✅ Deploy on every push to `main` branch
 - ✅ Show deployment status in GitHub PR checks
 - ✅ Provide deployment logs
 - ✅ Give you a live URL
@@ -75,7 +87,7 @@ The Railway CLI has limitations that make GitHub Actions deployment difficult:
 Every time you push code:
 
 ```bash
-git push origin solution
+git push origin main
 ```
 
 Railway automatically:

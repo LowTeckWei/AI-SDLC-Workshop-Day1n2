@@ -68,12 +68,12 @@ The workflow will handle deployments once Railway project is linked.
 
 #### Automatic Deployment (via GitHub Actions)
 
-The app will automatically deploy when you push to `main` or `solution` branches:
+The app will automatically deploy when you push to `main`:
 
 ```bash
 git add .
 git commit -m "Deploy to Railway"
-git push origin solution
+git push origin main
 ```
 
 The GitHub Action will:
@@ -102,16 +102,18 @@ railway link
 railway up
 ```
 
-### 5. Configure Environment Variables (if needed)
+### 5. Configure Environment Variables (Required)
 
-If your app requires environment variables:
+This app reads these variables at runtime (see `.env.example` and `lib/webauthn.ts`/`lib/db.ts`):
 
 1. Go to Railway Dashboard → Your Project
 2. Click on your service
 3. Navigate to **"Variables"** tab
-4. Add environment variables:
-   - `NODE_ENV=production`
-   - Add any other required variables
+4. Add:
+   - `JWT_SECRET` — **required**. Long random string (e.g. `openssl rand -base64 32`). Session cookies won't verify without it.
+   - `RP_ID` — recommended once you have a stable domain, e.g. `your-app.up.railway.app`. Otherwise falls back to the request hostname.
+   - `ORIGIN` — recommended once you have a stable domain, e.g. `https://your-app.up.railway.app`. Otherwise falls back to the request origin.
+5. Attach a **Volume** (Settings → Volumes → New Volume, mount path `/app/data`) so `RAILWAY_VOLUME_MOUNT_PATH` is set automatically — without it, `todos.db` lives in the container's ephemeral filesystem and is wiped on every redeploy.
 
 ### 6. Monitor Deployment
 
@@ -124,7 +126,7 @@ If your app requires environment variables:
 
 The deployment workflow (`.github/workflows/deploy-railway.yml`) is configured to:
 
-- **Trigger on:** Push to `main` or `solution` branches, or manual workflow dispatch
+- **Trigger on:** Push to `main`, or manual workflow dispatch
 - **Build:** Install dependencies and build the Next.js app
 - **Setup:** Automatically creates Railway project if it doesn't exist
 - **Deploy:** Uses Railway CLI to deploy the application
